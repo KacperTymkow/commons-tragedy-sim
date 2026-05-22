@@ -165,3 +165,14 @@ ax2.set_title("Developer portfolio value over time")
 ax2.legend()
 
 st.pyplot(fig2)
+
+st.subheader("🏆 Final Rankings")
+cols = st.columns(3)
+
+sorted_devs = sorted(developers, key=lambda d: d.portfolio_value(), reverse=True)
+
+for i, dev in enumerate(sorted_devs):
+    cols[i].metric(
+        label=dev.name,
+        value=f"{dev.portfolio_value():,.0f} m²"
+    )
