@@ -13,8 +13,9 @@ class Developer:
         self.build_rate = build_rate
         self.build_rate_log = []
         self.portfolio = []
+        self.portfolio_log = []
     
-    def acquire(self, avaible_plots):
+    def acquire(self, avaible_plots, land, enable_payoffs):
         points = int(self.build_rate * 6)
         total_aquired = 0
 
@@ -31,9 +32,12 @@ class Developer:
             size = np.random.randint(size_min, size_max)
 
             #stwórz osiedle i dodaj do portfela
-            estate = Estate(estate_type, size)
+            if enable_payoffs:
+                green_ratio = land.available_plots/land.available_plots_max
+            else:
+                green_ratio = 1.0
+            estate = Estate(estate_type, int(size * green_ratio))
             self.portfolio.append(estate)
-
 
             # zaktualizuj liczniki
             points -= ESTATE_TYPES[estate_type]['points']
@@ -44,9 +48,25 @@ class Developer:
     
     def log_state(self):
         self.build_rate_log.append(self.build_rate)
+        self.portfolio_log.append(self.portfolio_value())
 
+    def apply_retention(self, land):
+        new_portfolio = []
+        for e in self.portfolio:
+            if e.age < 100:
+                new_portfolio.append(e)
+            else:
+                land.available_plots = min(
+                    land.available_plots + e.size,
+                    land.available_plots_max
+                )
+        self.portfolio = new_portfolio
+    
     def portfolio_value(self):
         return sum([e.value for e in self.portfolio])
+    
+
+    
 
 class LandBank:
     def __init__(self, available_plots):
@@ -60,13 +80,11 @@ class LandBank:
     def log_state(self):
         self.history.append(self.available_plots)
     
-    def release_plots(self,rate):
-        self.available_plots = int(min(self.available_plots * (1 + rate), self.available_plots_max))
-
 class Estate:
-    def __init__(self,type, value, age=0):
+    def __init__(self,type, size, age=0):
         self.type = type #small, medium, large
-        self.value = value 
+        self.value = size 
+        self.size = size
         self.age = 0
 
     def depreciate(self):
@@ -87,8 +105,11 @@ atal_rate = st.sidebar.slider("Atal build rate", 0.0, 1.0, 0.05)
 
 st.sidebar.header("Simulation parameters")
 n_rounds = st.sidebar.slider("Number of rounds", 10, 200, 50)
-regen_rate = st.sidebar.slider("Plot regeneration rate", 0.0, 0.5, 0.1)
-
+st.sidebar.header("City renewal parameters")
+release_amount = st.sidebar.slider("Release amount (m²)", 10_000,1_200_000,100_000)
+release_freq = st.sidebar.slider("Release frequency", 0.2, 1.0, 0.4)
+enable_retention =st.sidebar.checkbox("Enable 100-year retention", value=False)
+enable_payoffs = st.sidebar.checkbox("Enable green ratio penalty", value=False)
 
 st.sidebar.info("""
 **Estate size reference:**
@@ -98,10 +119,49 @@ st.sidebar.info("""
 """)
 
 
-domDev = Developer('DomDevelopment', domdev_rate)
-echo = Developer('EchoInvestments', echo_rate)
+domDev = Developer('Dom Development', domdev_rate)
+echo = Developer('Echo Investments', echo_rate)
 atal = Developer('Atal', atal_rate)
 
-land = LandBank(163425000)# m^2
+land = LandBank(24_000_000)# m^2
 developers = [domDev,echo,atal]
 n_developers=len(developers)
+
+for i in range(n_rounds):
+    for a in developers:
+        aquired = a.acquire(land.available_plots, land, enable_payoffs)
+        land.develop(aquired)
+
+    if np.random.random() < release_freq:
+        land.available_plots =min(
+            land.available_plots + release_amount,
+            land.available_plots_max
+        )
+    land.log_state()
+
+    for g in developers:
+        if enable_retention:
+            g.apply_retention(land)
+        for p in g.portfolio:
+            p.depreciate()
+            p.birthday()
+        g.log_state()
+
+fig, ax = plt.subplots()
+ax.plot(range(n_rounds), land.history, label="Available plots")
+ax.set_xlabel("Rounds")
+ax.set_ylabel("Available plots (m²)")
+ax.set_title("Land Bank over time")
+ax.legend()
+
+st.pyplot(fig)
+
+fig2, ax2 = plt.subplots()
+for dev in developers:
+    ax2.plot(range(n_rounds), dev.portfolio_log, label=dev.name)
+ax2.set_xlabel("Rounds")
+ax2.set_ylabel("Portfolio value (m²)")
+ax2.set_title("Developer portfolio value over time")
+ax2.legend()
+
+st.pyplot(fig2)
