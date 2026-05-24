@@ -1,4 +1,5 @@
 import streamlit as st
+import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt 
 
@@ -127,13 +128,29 @@ land = LandBank(24_000_000)# m^2
 developers = [domDev,echo,atal]
 n_developers=len(developers)
 
+log = {
+    "round": [],
+    "land_available": [],
+    "city_released": [],
+    "city_release_amount": [],
+}
+for dev in developers:
+    log[f"{dev.name}_acquired"] = []
+    log[f"{dev.name}_portfolio_value"] = []
+ 
 for i in range(n_rounds):
     for a in developers:
         aquired = a.acquire(land.available_plots, land, enable_payoffs)
         land.develop(aquired)
+        log[f"{a.name}_acquired"].append(aquired)  # ← tu, po acquire
+
+    city_released = False
+    city_released_amount = 0
 
     if np.random.random() < release_freq:
-        land.available_plots =min(
+        city_released = True
+        city_released_amount = release_amount
+        land.available_plots = min(
             land.available_plots + release_amount,
             land.available_plots_max
         )
@@ -146,6 +163,14 @@ for i in range(n_rounds):
             p.depreciate()
             p.birthday()
         g.log_state()
+
+    for a in developers:
+        log[f"{a.name}_portfolio_value"].append(a.portfolio_value())
+
+    log['round'].append(i)
+    log['land_available'].append(land.available_plots)
+    log['city_released'].append(city_released)
+    log['city_release_amount'].append(city_released_amount)
 
 fig, ax = plt.subplots()
 ax.plot(range(n_rounds), land.history, label="Available plots")
@@ -176,3 +201,7 @@ for i, dev in enumerate(sorted_devs):
         label=dev.name,
         value=f"{dev.portfolio_value():,.0f} m²"
     )
+
+df = pd.DataFrame(log)
+st.subheader("📋 Simulation Log")
+st.dataframe(df)
